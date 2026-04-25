@@ -167,7 +167,10 @@ export async function POST(request: NextRequest) {
           break; // success
         } catch (err) {
           attempt += 1;
-          if (attempt > MAX_RETRIES) {
+          // Don't retry once we've started streaming text — restarting would
+          // duplicate the prefix on the client (and in the persisted row).
+          const cannotRetry = attempt > MAX_RETRIES || fullText.length > 0;
+          if (cannotRetry) {
             send('error', { message: err instanceof Error ? err.message : 'stream_failed' });
             await sb
               .from('messages')

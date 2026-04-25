@@ -4,12 +4,16 @@ import type { SupabaseLike } from './types';
 
 // Heuristic contradiction detection: same category + significant token overlap.
 // Phase 2 will replace this with embedding-based semantic comparison.
+//
+// Pass `existingFacts` when calling in a loop to avoid re-querying the DB on
+// every invocation. When omitted, the function loads them itself.
 export async function findContradictions(
   newFact: ProposedFact,
   userId: string,
   sb: SupabaseLike,
+  existingFacts?: MemoryFact[],
 ): Promise<MemoryFact[]> {
-  const existing = await loadAllActiveFacts(userId, sb);
+  const existing = existingFacts ?? (await loadAllActiveFacts(userId, sb));
   if (existing.length === 0) return [];
 
   const candidates = existing.filter((f) => f.category === newFact.category);

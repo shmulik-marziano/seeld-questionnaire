@@ -28,27 +28,8 @@ create policy "users update own profile" on public.profiles
 create policy "users insert own profile" on public.profiles
   for insert with check (auth.uid() = id);
 
--- Auto-create profile on user signup
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.profiles (id, email, display_name)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
-  )
-  on conflict (id) do nothing;
-
-  insert into public.behavior_patterns (user_id) values (new.id) on conflict do nothing;
-  insert into public.subscriptions (user_id, plan, status) values (new.id, 'free', 'active') on conflict do nothing;
-  return new;
-end;
-$$;
+-- Note: the new-user signup trigger function is defined in migration 03
+-- (after `behavior_patterns` and `subscriptions` exist).
 
 -- ════════════════════════════════════════
 -- conversations

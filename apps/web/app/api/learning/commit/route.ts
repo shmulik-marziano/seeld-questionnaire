@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { findContradictions } from '@shmuel/memory-engine';
+import { findContradictions, loadAllActiveFacts } from '@shmuel/memory-engine';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -39,6 +39,11 @@ export async function POST(req: NextRequest) {
   let modified = 0;
   const conflicts: { newText: string; existingFactId: string; existingText: string }[] = [];
 
+  // Load active facts once and reuse across decisions; we manually splice in
+  // newly-created facts so later iterations can also detect contradictions
+  // against them.
+  const activeFacts = await loadAllActiveFacts(user.id, sb);
+
   for (const dec of parsed.data.decisions) {
     if (dec.decision === 'reject') {
       rejected += 1;
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
       confidence: dec.confidence,
     };
 
-    const contradicts = await findContradictions(proposed, user.id, sb);
+    const contradicts = await findContradictions(proposed, user.id, sb, activeFacts);
 
     const { data: inserted } = await sb
       .from('memory_facts')
@@ -70,11 +75,12 @@ export async function POST(req: NextRequest) {
         user_confirmed: true,
         user_confirmed_at: new Date().toISOString(),
       })
-      .select('id')
+      .select('*')
       .single();
 
     // Mark each contradicting older fact as deprecated, link to the new one
     if (inserted && contradicts.length > 0) {
+      const contradictingIds = new Set(contradicts.map((c) => c.id));
       for (const c of contradicts) {
         await sb
           .from('memory_facts')
@@ -87,14 +93,19 @@ export async function POST(req: NextRequest) {
           existingText: c.fact_text,
         });
       }
-      if (conflicts.length > 0) {
-        await sb
-          .from('memory_facts')
-          .update({ supersedes: contradicts[0].id })
-          .eq('id', inserted.id)
-          .eq('user_id', user.id);
+      await sb
+        .from('memory_facts')
+        .update({ supersedes: contradicts[0].id })
+        .eq('id', inserted.id)
+        .eq('user_id', user.id);
+      // Drop deprecated facts from the in-memory list so subsequent iterations
+      // don't mark them deprecated again.
+      for (let i = activeFacts.length - 1; i >= 0; i -= 1) {
+        if (contradictingIds.has(activeFacts[i].id)) activeFacts.splice(i, 1);
       }
     }
+
+    if (inserted) activeFacts.push(inserted as (typeof activeFacts)[number]);
   }
 
   if (parsed.data.sessionId) {
