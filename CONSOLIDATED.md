@@ -5,7 +5,7 @@
 All content of this repository was archived verbatim (every tracked file + full
 commit log) into the main repository:
 
-> **github.com/shmulik-marziano/lenny-hq** →
+> **[github.com/shmulik-marziano/lenny-hq](https://github.com/shmulik-marziano/lenny-hq)** →
 > `15_ARCHIVE/2026-07/repo-consolidation/seeld-questionnaire/`
 
 lenny-hq is the single source of truth going forward. This repository should be
